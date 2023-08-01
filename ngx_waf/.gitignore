@@ -1,0 +1,6 @@
+.vscode
+lib/cjson
+lib/uthash
+test/test-nginx/t/servroot
+test/test-nginx/t/*.t
+test/test-nginx/gmon.out

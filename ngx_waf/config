@@ -1,0 +1,320 @@
+ngx_addon_name=ngx_http_waf_module
+
+deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_action.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_config.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_data.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_var.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_core.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_macro.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_type.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_util.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_ip_trie.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_shm.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_captcha.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_verify_bot.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_modsecurity.h \
+    $ngx_addon_dir/lib/cjson/cJSON.h"
+
+srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_var.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_action.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_data.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_check.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_config.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_ip_trie.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_lru_cache.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_mem_pool.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_shm.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_under_attack.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_captcha.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_verify_bot.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_modsecurity.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_util.c \
+    $ngx_addon_dir/lib/cjson/cJSON.c"
+
+
+ngx_http_waf_module_libs=""
+
+ngx_http_waf_module_inc_path="$ngx_addon_dir/inc $ngx_addon_dir/lib"
+
+
+# Check if the modsecurity library is installed.
+if [ -n "$LIB_MODSECURITY" ] ; then
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_MODSECURITY}/lib -Wl,-rpath,/usr/local/modsecurity/lib:${LIB_MODSECURITY}/lib -l modsecurity "
+    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_MODSECURITY}/include"
+else
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -Wl,-rpath,/usr/local/modsecurity/lib -l modsecurity "
+fi
+
+ngx_feature="modsecurity library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs=$(cat << END
+#include <modsecurity/modsecurity.h>
+#include <modsecurity/transaction.h>
+#if defined(MSC_USE_RULES_SET)
+#include <modsecurity/rules_set.h>
+#else
+#include <modsecurity/rules.h>
+#endif
+END
+)
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+Please run:
+    On Ubuntu or Debian: 
+            apt-get update && apt-get install --yes libmodsecurity3 libmodsecurity-dev
+    On other OS:
+            cd /usr/local/src \\
+        &&  wget https://github.com/maxmind/libmaxminddb/releases/download/1.6.0/libmaxminddb-1.6.0.tar.gz -O libmaxminddb.tar.gz \
+        &&  mkdir libmaxminddb \\
+        &&  tar -zxf "libmaxminddb.tar.gz" -C libmaxminddb --strip-components=1 \\
+        &&  cd libmaxminddb \\
+        &&  ./configure --prefix=/usr/local/libmaxminddb \\
+        &&  make -j \$(nproc) \\
+        &&  make install \\
+        &&  cd /usr/local/src \\
+        &&  git clone -b v3.0.5 https://github.com/SpiderLabs/ModSecurity.git \\
+        &&  cd ModSecurity \\
+        &&  chmod +x build.sh \\
+        &&  ./build.sh \\
+        &&  git submodule init \\
+        &&  git submodule update \\
+        &&  ./configure --prefix=/usr/local/modsecurity --with-maxmind=/usr/local/libmaxminddb \\\
+        &&  make -j \$(nproc) \ \\
+        &&  make install \\
+        &&  export LIB_MODSECURITY=/usr/local/modsecurity \\
+        &&  cd $PWD
+END
+    PWD=''
+    exit 1
+fi
+
+
+if [ -n "$LIB_CURL" ] ; then
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CURL}/lib  -Wl,-rpath,${LIB_CURL}/lib -l curl "
+    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_CURL}/include"
+else
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l curl "
+fi
+
+# Check if the curl library is installed.
+ngx_feature="curl library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs="#include <curl/curl.h>"
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+Please run:
+    On Ubuntu or Debian: 
+            apt-get update && apt-get install --yes libcurl4-openssl-dev
+    On Centos8:
+            dnf install libcurl && dnf install libcurl-devel
+    On Centos7:
+            yum update && yum install -y libcurl libcurl-devel
+    On other OS:
+            cd /usr/local/src \\
+        &&  wget https://curl.se/download/curl-7.78.0.tar.gz \\
+        &&  mkdir curl \\
+        &&  tar -zxf curl-7.78.0.tar.gz -C curl --strip-components=1 \\
+        &&  cd curl \\
+        &&  ./configure --prefix=/usr/local/libcurl \\
+        &&  make -j \$(nproc) \\
+        &&  make install \\
+        &&  export LIB_CURL=/usr/local/libcurl \\
+        &&  cd $PWD
+END
+    PWD=''
+    exit 1
+fi
+
+
+# Check if the cJSON library is installed.
+ngx_feature="cJSON library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs="#include <cjson/cJSON.h>"
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+Please run:
+        cd $ngx_addon_dir \\
+    &&  git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson \\
+    &&  cd $PWD
+END
+    PWD=''
+    exit 1
+fi
+
+
+ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${ngx_addon_dir}/lib/uthash/include"
+
+# Check if the uthash library is installed.
+ngx_feature="uthash library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs=$(cat << END
+#include <uthash.h>
+#include <utarray.h>
+#include <utlist.h>
+#include <utstack.h>
+END
+)
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+
+Please run:
+            cd $ngx_addon_dir \\
+        &&  git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash \\
+        &&  cd $PWD
+
+END
+    PWD=''
+    exit 1
+fi
+
+# Check if the C compiler supports the C99 standard.
+ngx_feature="C99 features"
+ngx_feature_name=
+ngx_feature_run=yes
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs=$(cat << END
+#include <stdio.h>
+#include <string.h>
+END
+)
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=$(cat << END
+
+/* Declare variables in loops. */
+for(int i = 0; i < 10; i++) {}
+
+int i = 0, j = 0;
+
+/* Short-circuit operation for logical expressions. */
+if (i == 0 || !(j = 1)) {}
+
+if (j == 1) { return 1; }
+
+j = 0;
+
+if (i != 0 && !(j = 1)) {}
+
+if (j == 1) { return 1; }
+
+#define my_sprintf(...) sprintf(__VA_ARGS__)
+
+char buf[1024];
+my_sprintf(buf, "%s/%s", "ADD-SP", "ngx_waf");
+if (strcmp(buf, "ADD-SP/ngx_waf") != 0) {
+    return 1;
+}
+END
+)
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature, make sure your C compiler supports and enables the C99 standard.
+
+For gcc, you can enable the C99 standard by appending the parameter --with-cc-opt='-std=gnu99'.
+
+END
+    exit 1
+fi
+
+
+
+if [ -n "$LIB_SODIUM" ] ;  then
+    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_SODIUM}/include"
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_SODIUM}/lib -Wl,-Bstatic -l sodium -Wl,-Bdynamic "
+else
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l sodium "
+fi
+
+
+# Check if libsodium exists.
+ngx_feature="sodium library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs='#include <sodium.h>'
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+
+Please run:
+    On Ubuntu or Debian: 
+            apt-get update && apt-get install --yes libsodium23 libsodium-dev
+    On Alpine: 
+            apk update && apk add libsodium libsodium-dev
+    On other OS:
+            # You can remove directories libsodium-src and libsodium after installing the ngx_http_waf_module.
+            git clone https://github.com/jedisct1/libsodium.git --branch stable libsodium-src \\
+        &&  cd libsodium-src \\
+        &&  ./configure --prefix=$PWD/libsodium --with-pic \\
+        &&  make -j\$(nproc) && make check -j \$(nproc) && make install \\
+        &&  export LIB_SODIUM=$PWD/libsodium \\
+        &&  cd $PWD
+
+END
+    PWD=''
+    exit 1
+fi
+
+
+# Clear these variables to avoid affecting the installation of other modules.
+ngx_feature=
+ngx_feature_name=
+ngx_feature_run=
+ngx_feature_path=
+ngx_feature_incs=
+ngx_feature_libs=
+ngx_feature_test=
+
+
+if test -n "$ngx_module_link"; then
+    ngx_module_type=HTTP_AUX_FILTER
+    ngx_module_name=$ngx_addon_name
+    ngx_module_deps=$deps
+    ngx_module_incs=$ngx_http_waf_module_inc_path
+    ngx_module_srcs=$srcs
+    ngx_module_libs=$ngx_http_waf_module_libs
+
+    . auto/module
+else
+    HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ${ngx_addon_name}"
+    NGX_ADDON_DEPS-"$NGX_ADDON_DEPS $deps"
+    HTTP_INCS="$HTTP_INCS -I $ngx_addon_dir/inc $ngx_addon_dir/inc/libinjection/src"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
+fi
